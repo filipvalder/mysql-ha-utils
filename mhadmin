@@ -1,8 +1,9 @@
 #!/bin/sh
 # Author: Filip Valder (filip.valder@vsb.cz)
-# Date: 6.5.2011
+# Date: 9.5.2011
 # Description: SHELL script for MySQL backup, restore and service actions
-# Version: 0.0
+# Name: MySQL High Availability Utilities
+# Version: STABLE
 
 
 # Pre-flight checks
@@ -70,8 +71,8 @@ backup ( ) {
 		LOG_BIN_LAST=`lsof | grep -P "^mysqld\s+\S+\s+\S+\s+\S+w\s+.*\Wmysql-bin.\d{6}$" | rev | cut -d "." -f 1 | rev | sort -n | tail -n 1`
 		for LOG_BIN in `find $LOG_BIN_DIR -name "mysql-bin.[0-9][0-9][0-9][0-9][0-9][0-9]" -printf "%f\n" 2> /dev/null | sort -n | cut -d "." -f 2` ; do
 			if [ $LOG_BIN -lt $LOG_BIN_LAST ] ; then
-				DATE=`date +%F`
-				mkdir -p $DB_BACKUP_DIR/mysql-bin/ && cd $LOG_BIN_DIR && mv mysql-bin.$LOG_BIN $DB_BACKUP_DIR/mysql-bin/$DATE.$LOG_BIN && gzip $DB_BACKUP_DIR/mysql-bin/$DATE.$LOG_BIN
+				DATETIME=`date +%F.%T`
+				mkdir -p $DB_BACKUP_DIR/mysql-bin/ && cd $LOG_BIN_DIR && mv mysql-bin.$LOG_BIN $DB_BACKUP_DIR/mysql-bin/$DATETIME.$LOG_BIN && gzip $DB_BACKUP_DIR/mysql-bin/$DATETIME.$LOG_BIN
 			fi
 		done
 	fi
@@ -103,14 +104,10 @@ backup ( ) {
 	fi
 	# Remove old binlogs
 	find $DB_BACKUP_DIR/mysql-bin/ -maxdepth 1 -mtime +$DB_BACKUP_DAYS -name "[^.]*" -type f -delete 2> /dev/null
-	# Remove old backups in hosting subdirectories
-	find $WWW_DIR/*/$WWW_DB_SUBDIR/ -maxdepth 1 -mtime +$DB_BACKUP_DAYS -name "[^._]*" -type f -delete 2> /dev/null
-	find $WWW_DIR/*/$WWW_DB_SUBDIR/ -maxdepth 1 -mtime +$DB_BACKUP_DAYS_WEEKLY -name "_weekly.*" -type f -delete 2> /dev/null
-	find $WWW_DIR/*/$WWW_DB_SUBDIR/ -maxdepth 1 -mtime +$DB_BACKUP_DAYS_MONTHLY -name "_monthly.*" -type f -delete 2> /dev/null
-	# Remove old backups in the common backup directory
-	find $DB_BACKUP_DIR -maxdepth 1 -mtime +$DB_BACKUP_DAYS -name "[^._]*" -type f -delete 2> /dev/null
-	find $DB_BACKUP_DIR -maxdepth 1 -mtime +$DB_BACKUP_DAYS_WEEKLY -name "_weekly.*" -type f -delete 2> /dev/null
-	find $DB_BACKUP_DIR -maxdepth 1 -mtime +$DB_BACKUP_DAYS_MONTHLY -name "_monthly.*" -type f -delete 2> /dev/null
+	# Remove old backups in hosting subdirectories and the common backup directory
+	find $WWW_DIR/*/$WWW_DB_SUBDIR/ $DB_BACKUP_DIR -maxdepth 1 -mtime +$DB_BACKUP_DAYS -name "[^._]*" -type f -delete 2> /dev/null
+	find $WWW_DIR/*/$WWW_DB_SUBDIR/ $DB_BACKUP_DIR -maxdepth 1 -mtime +$DB_BACKUP_DAYS_WEEKLY -name "_weekly.*" -type f -delete 2> /dev/null
+	find $WWW_DIR/*/$WWW_DB_SUBDIR/ $DB_BACKUP_DIR -maxdepth 1 -mtime +$DB_BACKUP_DAYS_MONTHLY -name "_monthly.*" -type f -delete 2> /dev/null
 }
 
 # Process restore
@@ -143,12 +140,12 @@ restore ( ) {
 	START_DATETIME=`echo $DUMP | sed "s/.*\.\([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\)\.\([0-9][0-9]:[0-9][0-9]:[0-9][0-9]\)\.sql\.gz/\1 \2/"`
 	# Search for first required binlog
 	BINLOG_FIRST=`find \
-		$DB_BACKUP_DIR/mysql-bin/*.* \
+		$DB_BACKUP_DIR/mysql-bin/*.*.*.gz \
 		$LOG_BIN_DIR/mysql-bin.[0-9][0-9][0-9][0-9][0-9][0-9] \
 	-newer $DUMP -printf "%T@ %p\n" 2> /dev/null | sort -n | head -n 1 | cut -d " " -f 2-`
 	# Search for last required binlog
 	BINLOG_LAST=`find \
-		$DB_BACKUP_DIR/mysql-bin/*.* \
+		$DB_BACKUP_DIR/mysql-bin/*.*.*.gz \
 		$LOG_BIN_DIR/mysql-bin.[0-9][0-9][0-9][0-9][0-9][0-9] \
 	-newer $LOCK_FILE -printf "%T@ %p\n" 2> /dev/null | sort -n | head -n 1 | cut -d " " -f 2-`
 	# Generate args in order to search for intermediate binlogs
@@ -163,7 +160,7 @@ restore ( ) {
 	fi
 	# Search for intermediate binlogs
 	BINLOGS=`find \
-		$DB_BACKUP_DIR/mysql-bin/*.* \
+		$DB_BACKUP_DIR/mysql-bin/*.*.*.gz \
 		$LOG_BIN_DIR/mysql-bin.[0-9][0-9][0-9][0-9][0-9][0-9] \
 	$ARGUMENTS -printf "%T@ %p\n" 2> /dev/null | sort -n | cut -d " " -f 2-`
 	# Create list of all required binlogs
@@ -219,6 +216,15 @@ vacuum ( ) {
 	[ $ERROR_COUNTER -eq 0 ] || exit 1
 }
 
+# Show name and version
+version ( ) {
+	# Grep this script
+	NAME=`grep -m1 "^# Name: " $0 | sed "s/^# Name: //"`
+	VERSION=`grep -m1 "^# Version: " $0 | sed "s/^# Version: //"`
+	# Show name and version
+	echo "$NAME v$VERSION"
+}
+
 
 # Main program
 # Set ``umask'' for newly created files
@@ -241,16 +247,20 @@ case $1 in
 	vacuum)
 		vacuum $2
 	;;
+	version)
+		version
+	;;
 	*)
 		[ ! -z "$1" ] && echo "Unknown command: $1"
-		echo "MySQL High Availability Utilities v0.0
+		echo "`version`
 
 Available commands:
     backup [dumps|logs]             Perform full database backups
                                     [dumps only|binlogs only]
     restore database Y-m-d H:M:S    Restore a database as of time/date
     vacuum [quick]                  Perform full service on all tables
-                                    of all databases [checks/repairs only]"
+                                    of all databases [checks/repairs only]
+    version                         Show this script's name and version"
 	;;
 esac
 # Remove lockfile

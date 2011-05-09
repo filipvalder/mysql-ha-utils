@@ -3,7 +3,7 @@
 COMMAND="/root/bin/mhadmin"
 # Optionally lower performance impact (command ``ionice'' required)
 #COMMAND="ionice -c 3 nice -n 20 /root/bin/mhadmin"
-# Adjust PATH as needed
+# Adjust $PATH as needed
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:/root/bin
 
 # Crontab list
