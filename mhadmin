@@ -72,7 +72,7 @@ backup ( ) {
 		for LOG_BIN in `find $LOG_BIN_DIR -name "mysql-bin.[0-9][0-9][0-9][0-9][0-9][0-9]" -printf "%f\n" 2> /dev/null | sort -n | cut -d "." -f 2` ; do
 			if [ $LOG_BIN -lt $LOG_BIN_LAST ] ; then
 				DATETIME=`date +%F.%T`
-				mkdir -p $DB_BACKUP_DIR/mysql-bin/ && cd $LOG_BIN_DIR && mv mysql-bin.$LOG_BIN $DB_BACKUP_DIR/mysql-bin/$DATETIME.$LOG_BIN && gzip $DB_BACKUP_DIR/mysql-bin/$DATETIME.$LOG_BIN
+				mkdir -p $DB_BACKUP_DIR/mysql-bin/ && cd $LOG_BIN_DIR && cp -p mysql-bin.$LOG_BIN $DB_BACKUP_DIR/mysql-bin/$DATETIME.$LOG_BIN && gzip $DB_BACKUP_DIR/mysql-bin/$DATETIME.$LOG_BIN
 			fi
 		done
 	fi
