@@ -8,7 +8,7 @@
 
 # Pre-flight checks
 # Required commands (dependencies)
-COMMANDS="cut date egrep find grep gzip head lsof mkdir mv mysql mysqlbinlog mysqlcheck mysqldump rev rm sed sort stat tail touch uniq zcat"
+COMMANDS="cp cut date egrep find grep gzip head lsof mkdir mysql mysqlbinlog mysqlcheck mysqldump rev rm sed sort stat tail touch uniq zcat"
 for COMMAND in $COMMANDS ; do
 	if ! which $COMMAND > /dev/null 2>&1 ; then
 		echo "Error: Command $COMMAND not found." 1>&2
@@ -72,7 +72,7 @@ backup ( ) {
 		for LOG_BIN in `find $LOG_BIN_DIR -name "mysql-bin.[0-9][0-9][0-9][0-9][0-9][0-9]" -printf "%f\n" 2> /dev/null | sort -n | cut -d "." -f 2` ; do
 			if [ $LOG_BIN -lt $LOG_BIN_LAST ] ; then
 				DATETIME=`date +%F.%T`
-				mkdir -p $DB_BACKUP_DIR/mysql-bin/ && cd $LOG_BIN_DIR && cp -p mysql-bin.$LOG_BIN $DB_BACKUP_DIR/mysql-bin/$DATETIME.$LOG_BIN && gzip $DB_BACKUP_DIR/mysql-bin/$DATETIME.$LOG_BIN
+				mkdir -p $DB_BACKUP_DIR/mysql-bin/ && cd $LOG_BIN_DIR && [ ! -f $DB_BACKUP_DIR/mysql-bin/*.*.$LOG_BIN.gz ] && cp -p mysql-bin.$LOG_BIN $DB_BACKUP_DIR/mysql-bin/$DATETIME.$LOG_BIN && gzip $DB_BACKUP_DIR/mysql-bin/$DATETIME.$LOG_BIN
 			fi
 		done
 	fi
