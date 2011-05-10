@@ -176,6 +176,8 @@ restore ( ) {
 	echo -e ".\nRestoring binlogs:"
 	for BINLOG in $BINLOG_LIST ; do
 		BINLOG_FILE=$BINLOG
+		# Avoid restoring duplicate binlogs
+		[ -f $LOG_BIN_DIR/`echo $BINLOG_FILE | sed "s/.*\.\([0-9][0-9][0-9][0-9][0-9][0-9]\)\.gz$/mysql-bin.\1/"` ] && continue
 		# Find out a file type containing binlog
 		if file -b $BINLOG_FILE | grep "^gzip compressed data" > /dev/null ; then
 			zcat $BINLOG_FILE > $LOCK_FILE

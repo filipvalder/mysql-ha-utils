@@ -1,6 +1,6 @@
 Content of mysql-ha-utils:
 ---------------------------------------------------------------------------
-mhadmin.cron	Sample (recommended) crontab
+mhadmin.cron	A sample (recommended) crontab
 mhadmin		SHELL script for MySQL backup, restore and service actions
 README		This file
 
