@@ -51,7 +51,7 @@ LOCK_FILE="$TMP_DIR/mhadmin.tmp"
 MYSQL="mysql --default-character-set=$DEFAULT_CHARACTER_SET -f -h $MYSQL_HOST --max_allowed_packet=$MAX_ALLOWED_PACKET -p$MYSQL_PASSWORD -s -u $MYSQL_USER"
 MYSQLBINLOG="mysqlbinlog -D -f --set-charset=$DEFAULT_CHARACTER_SET"
 MYSQLCHECK="mysqlcheck --auto-repair --default-character-set=$DEFAULT_CHARACTER_SET -f -h $MYSQL_HOST -p$MYSQL_PASSWORD -s -u $MYSQL_USER"
-MYSQLDUMP="mysqldump --add-locks --create-options --default-character-set=$DEFAULT_CHARACTER_SET -K -e -f --hex-blob -h $MYSQL_HOST --max_allowed_packet=$MAX_ALLOWED_PACKET -p$MYSQL_PASSWORD -q --set-charset -u $MYSQL_USER"
+MYSQLDUMP="mysqldump --add-locks --create-options --default-character-set=$DEFAULT_CHARACTER_SET -K -e -f --hex-blob -h $MYSQL_HOST --max_allowed_packet=$MAX_ALLOWED_PACKET -p$MYSQL_PASSWORD -q --set-charset --single-transaction -u $MYSQL_USER"
 
 
 # Functions
