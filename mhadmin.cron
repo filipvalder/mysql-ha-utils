@@ -1,17 +1,17 @@
 # Environment variables
 # Change this according to where your ``mhadmin'' resides
-COMMAND="/root/bin/mhadmin"
+MHADMIN="/root/bin/mhadmin"
 # Optionally lower performance impact (command ``ionice'' required)
-#COMMAND="ionice -c 3 nice -n 20 /root/bin/mhadmin"
+#MHADMIN="ionice -c 3 nice -n 20 /root/bin/mhadmin"
 # Adjust $PATH as needed
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:/root/bin
 
 # Crontab list
 # Perform full backup incl. dumps and binlogs
-@weekly root $COMMAND backup
+@daily root $MHADMIN backup
 # Backup binlogs only
-5 1-23 * * * root $COMMAND backup logs
+5 1-23 * * * root $MHADMIN backup logs
 # Perform extended check and repair, analyze and optimize all tables
-10 3 * * * root $COMMAND vacuum
+10 3 * * * root $MHADMIN vacuum
 # Just check and repair...
-15 1-2,4-23 * * * root $COMMAND vacuum quick
+15 1-2,4-23 * * * root $MHADMIN vacuum quick
