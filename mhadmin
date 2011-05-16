@@ -7,8 +7,16 @@
 
 
 # Pre-flight checks
+# FreeBSD compatibility
+if [ "`uname`" = "FreeBSD" ] ; then
+	FIND="gfind"
+	GREP="pcregrep"
+	STAT_ARGUMENTS="-f %p_%u"
+	STAT_CUT_CHARS=5
+fi
+
 # Required commands (dependencies)
-COMMANDS="cp cut date egrep find grep gzip head lsof mkdir mysql mysqlbinlog mysqlcheck mysqldump rev rm sed sort stat tail touch uniq zcat"
+COMMANDS="cp cut date egrep ${FIND:-find} ${GREP:-grep} gzip head lsof mkdir mysql mysqlbinlog mysqlcheck mysqldump rev rm sed sort stat tail touch uniq zcat"
 for COMMAND in $COMMANDS ; do
 	if ! which $COMMAND > /dev/null 2>&1 ; then
 		echo "Error: Command $COMMAND not found." 1>&2
@@ -37,7 +45,7 @@ WWW_DB_SUBDIR="mysqlbackup"		# Name of hostings' backup subdirectories
 WWW_DIR="/srv/www/"			# Hosting root directory
 
 # Local variables
-if [ -r $CONF_FILE ] && ! [ "`stat -c"%a %u" $CONF_FILE | cut -c 2-`" = "00 0" ] ; then
+if [ -r $CONF_FILE ] && ! [ "`stat ${STAT_ARGUMENTS:--c %a_%u} $CONF_FILE | cut -c $STAT_CUT_CHARS-`" = "00_0" ] ; then
 	echo "Error: Configuration file $CONF_FILE has NOT limited privileges." 1>&2
 	exit 1
 elif [ -r $CONF_FILE ] ; then
@@ -68,8 +76,8 @@ backup ( ) {
 	# Backup binlogs only
 	if ! [ "$TYPE" = "dumps" ] ; then
 		echo "FLUSH LOGS" | $MYSQL
-		LOG_BIN_LAST=`lsof | grep -P "^mysqld\s+\S+\s+\S+\s+\S+w\s+.*\Wmysql-bin.\d{6}$" | rev | cut -d "." -f 1 | rev | sort -n | tail -n 1`
-		for LOG_BIN in `find $LOG_BIN_DIR -name "mysql-bin.[0-9][0-9][0-9][0-9][0-9][0-9]" -printf "%f\n" 2> /dev/null | sort -n | cut -d "." -f 2` ; do
+		LOG_BIN_LAST=`lsof -w | $GREP "^mysqld\s+\S+\s+\S+\s+\S+w\s+.*\Wmysql-bin.\d{6}$" | rev | cut -d "." -f 1 | rev | sort -n | tail -n 1`
+		for LOG_BIN in `$FIND $LOG_BIN_DIR -name "mysql-bin.[0-9][0-9][0-9][0-9][0-9][0-9]" -printf "%f\n" 2> /dev/null | sort -n | cut -d "." -f 2` ; do
 			if [ $LOG_BIN -lt $LOG_BIN_LAST ] ; then
 				DATETIME=`date +%F.%T`
 				mkdir -p $DB_BACKUP_DIR/mysql-bin/ && cd $LOG_BIN_DIR && [ ! -f $DB_BACKUP_DIR/mysql-bin/*.*.$LOG_BIN.gz ] && cp -p mysql-bin.$LOG_BIN $DB_BACKUP_DIR/mysql-bin/$DATETIME.$LOG_BIN && gzip $DB_BACKUP_DIR/mysql-bin/$DATETIME.$LOG_BIN
@@ -82,7 +90,7 @@ backup ( ) {
 		[ $DAY_OF_WEEK -eq 0 ] && PREFIX="_weekly." || PREFIX=""
 		[ $DAY_OF_MONTH -eq 1 ] && PREFIX="_monthly."
 		# Search for (sub)databases which correspond with their hosting name and backup them
-		for HOSTING in `find $WWW_DIR -maxdepth 1 -mindepth 1 -name "[^._]*" -type d -printf "%f " 2> /dev/null` ; do
+		for HOSTING in `$FIND $WWW_DIR -maxdepth 1 -mindepth 1 -name "[^._]*" -type d -printf "%f " 2> /dev/null` ; do
 			if [ $AUTO_CREATE_BACKUP_DIRS -eq 1 ] || [ -d "$WWW_DIR/$HOSTING/$WWW_DB_SUBDIR/" ] ; then
 				DATETIME=`date +%F.%T`
 				mkdir -p $WWW_DIR/$HOSTING/$WWW_DB_SUBDIR/ && $MYSQLDUMP $HOSTING | gzip > $WWW_DIR/$HOSTING/$WWW_DB_SUBDIR/$PREFIX$HOSTING.$DATETIME.sql.gz
@@ -95,19 +103,19 @@ backup ( ) {
 			fi
 		done
 		# Backup unassigned databases to the common backup directory
-		for DATABASE in `echo "SHOW DATABASES" | $MYSQL | grep -v "^information_schema$"` ; do
-			if ! echo "$DATABASE_LIST " | grep " $DATABASE " ; then
+		for DATABASE in `echo "SHOW DATABASES" | $MYSQL | $GREP -v "^information_schema$"` ; do
+			if ! echo "$DATABASE_LIST " | $GREP " $DATABASE " ; then
 				DATETIME=`date +%F.%T`
 				mkdir -p $DB_BACKUP_DIR && $MYSQLDUMP $DATABASE | gzip > $DB_BACKUP_DIR/$PREFIX$DATABASE.$DATETIME.sql.gz
 			fi
 		done
 	fi
 	# Remove old binlogs
-	find $DB_BACKUP_DIR/mysql-bin/ -maxdepth 1 -mtime +$DB_BACKUP_DAYS -name "[^.]*" -type f -delete 2> /dev/null
+	$FIND $DB_BACKUP_DIR/mysql-bin/ -maxdepth 1 -mtime +$DB_BACKUP_DAYS -name "[^.]*" -type f -delete 2> /dev/null
 	# Remove old backups in hosting subdirectories and the common backup directory
-	find $WWW_DIR/*/$WWW_DB_SUBDIR/ $DB_BACKUP_DIR -maxdepth 1 -mtime +$DB_BACKUP_DAYS -name "[^._]*" -type f -delete 2> /dev/null
-	find $WWW_DIR/*/$WWW_DB_SUBDIR/ $DB_BACKUP_DIR -maxdepth 1 -mtime +$DB_BACKUP_DAYS_WEEKLY -name "_weekly.*" -type f -delete 2> /dev/null
-	find $WWW_DIR/*/$WWW_DB_SUBDIR/ $DB_BACKUP_DIR -maxdepth 1 -mtime +$DB_BACKUP_DAYS_MONTHLY -name "_monthly.*" -type f -delete 2> /dev/null
+	$FIND $WWW_DIR/*/$WWW_DB_SUBDIR/ $DB_BACKUP_DIR -maxdepth 1 -mtime +$DB_BACKUP_DAYS -name "[^._]*" -type f -delete 2> /dev/null
+	$FIND $WWW_DIR/*/$WWW_DB_SUBDIR/ $DB_BACKUP_DIR -maxdepth 1 -mtime +$DB_BACKUP_DAYS_WEEKLY -name "_weekly.*" -type f -delete 2> /dev/null
+	$FIND $WWW_DIR/*/$WWW_DB_SUBDIR/ $DB_BACKUP_DIR -maxdepth 1 -mtime +$DB_BACKUP_DAYS_MONTHLY -name "_monthly.*" -type f -delete 2> /dev/null
 }
 
 # Process restore
@@ -123,7 +131,7 @@ restore ( ) {
 	# Modify timestamp on the lockfile
 	touch -t `echo $DATE$TIME | sed -e "s/\([0-9][0-9]\)$/.\1/" -e "s/[-:]//g"` $LOCK_FILE
 	# Search for available dumps
-	DUMP=`find \
+	DUMP=`$FIND \
 		$WWW_DIR/$HOSTING/$WWW_DB_SUBDIR/$DATABASE.*.*.sql.gz \
 		$WWW_DIR/$HOSTING/$WWW_DB_SUBDIR/_weekly.$DATABASE.*.*.sql.gz \
 		$WWW_DIR/$HOSTING/$WWW_DB_SUBDIR/_monthly.$DATABASE.*.*.sql.gz \
@@ -139,12 +147,12 @@ restore ( ) {
 	fi
 	START_DATETIME=`echo $DUMP | sed "s/.*\.\([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\)\.\([0-9][0-9]:[0-9][0-9]:[0-9][0-9]\)\.sql\.gz/\1 \2/"`
 	# Search for first required binlog
-	BINLOG_FIRST=`find \
+	BINLOG_FIRST=`$FIND \
 		$DB_BACKUP_DIR/mysql-bin/*.*.*.gz \
 		$LOG_BIN_DIR/mysql-bin.[0-9][0-9][0-9][0-9][0-9][0-9] \
 	-newer $DUMP -printf "%T@ %p\n" 2> /dev/null | sort -n | head -n 1 | cut -d " " -f 2-`
 	# Search for last required binlog
-	BINLOG_LAST=`find \
+	BINLOG_LAST=`$FIND \
 		$DB_BACKUP_DIR/mysql-bin/*.*.*.gz \
 		$LOG_BIN_DIR/mysql-bin.[0-9][0-9][0-9][0-9][0-9][0-9] \
 	-newer $LOCK_FILE -printf "%T@ %p\n" 2> /dev/null | sort -n | head -n 1 | cut -d " " -f 2-`
@@ -159,7 +167,7 @@ restore ( ) {
 		ARGUMENTS=""
 	fi
 	# Search for intermediate binlogs
-	BINLOGS=`find \
+	BINLOGS=`$FIND \
 		$DB_BACKUP_DIR/mysql-bin/*.*.*.gz \
 		$LOG_BIN_DIR/mysql-bin.[0-9][0-9][0-9][0-9][0-9][0-9] \
 	$ARGUMENTS -printf "%T@ %p\n" 2> /dev/null | sort -n | cut -d " " -f 2-`
@@ -179,13 +187,13 @@ restore ( ) {
 		# Avoid restoring duplicate binlogs
 		[ -f $LOG_BIN_DIR/`echo $BINLOG_FILE | sed "s/.*\.\([0-9][0-9][0-9][0-9][0-9][0-9]\)\.gz$/mysql-bin.\1/"` ] && continue
 		# Find out a file type containing binlog
-		if file -b $BINLOG_FILE | grep "^gzip compressed data" > /dev/null ; then
+		if file -b $BINLOG_FILE | $GREP "^gzip compressed data" > /dev/null ; then
 			zcat $BINLOG_FILE > $LOCK_FILE
 			BINLOG_FILE=$LOCK_FILE
 		fi
 		# Find out a file type containing binlog
-		if file -b $BINLOG_FILE | grep "^MySQL replication log" > /dev/null ; then
-			$MYSQLBINLOG -d $DATABASE --start-datetime="$START_DATETIME" --stop-datetime="$STOP_DATETIME" $BINLOG_FILE | grep -v "^use $DATABASE" | $MYSQL $DATABASE_BACKUP
+		if file -b $BINLOG_FILE | $GREP "^MySQL replication log" > /dev/null ; then
+			$MYSQLBINLOG -d $DATABASE --start-datetime="$START_DATETIME" --stop-datetime="$STOP_DATETIME" $BINLOG_FILE | $GREP -v "^use $DATABASE" | $MYSQL $DATABASE_BACKUP
 			echo "$BINLOG"
 		else
 			echo "Warning: Binlog $BINLOG is not valid." 1>&2
@@ -207,7 +215,7 @@ vacuum ( ) {
 		ARGUMENTS="--analyze --extended --optimize"
 	fi
 	# Loop through all databases
-	for DATABASE in `echo "SHOW DATABASES" | $MYSQL | grep -v "^information_schema$"` ; do
+	for DATABASE in `echo "SHOW DATABASES" | $MYSQL | $GREP -v "^information_schema$"` ; do
 		# Loop through all tables
 		for TABLE in `echo "USE $DATABASE; SHOW TABLES" | $MYSQL` ; do
 			# Execute check command
@@ -221,8 +229,8 @@ vacuum ( ) {
 # Show name and version
 version ( ) {
 	# Grep this script
-	NAME=`grep -m1 "^# Name: " $0 | sed "s/^# Name: //"`
-	VERSION=`grep -m1 "^# Version: " $0 | sed "s/^# Version: //"`
+	NAME=`$GREP "^# Name: " $0 | head -n 1 | sed "s/^# Name: //"`
+	VERSION=`$GREP "^# Version: " $0 | head -n 1 | sed "s/^# Version: //"`
 	# Show name and version
 	echo "$NAME v$VERSION"
 }
