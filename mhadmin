@@ -33,6 +33,7 @@ DB_BACKUP_DAYS=30			# Length (in days) for which daily backups are being kept.
 DB_BACKUP_DAYS_MONTHLY=180		# Length (in days) for which monthly backups are being kept.
 DB_BACKUP_DAYS_WEEKLY=90		# Length (in days) for which weekly backups are being kept.
 DB_BACKUP_DIR="/srv/mysqlbackup/"	# Common backup directory containing binlogs and unassigned databases.
+DB_MAPPING="s/\.//g"			# Substitution in hosting names for mapping them to database names
 LOG_BIN_DIR="/srv/mysql/"		# MySQL's binlog directory
 MAX_ALLOWED_PACKET="1GB"		# MySQL's max. allowed packet length
 MYSQL_HOST="localhost"			# MySQL host
@@ -40,7 +41,7 @@ MYSQL_PASSWORD=""			# MySQL password
 MYSQL_USER="root"			# MySQL user
 TMP_DIR="/tmp/"				# Temporary directory. It MUST be on a filesystem with enough free space when restoring large databases.
 UMASK="006"				# Umask for newly created (temporary) files
-WWW_DB_SUBDIR="mysqlbackup"		# Name of hostings' backup subdirectories
+WWW_DB_SUBDIR="mysqlbackup"		# Per hosting backup subdirectory
 WWW_DIR="/srv/www/"			# Hosting root directory
 
 # Local variables
@@ -79,22 +80,25 @@ backup ( ) {
 		for LOG_BIN in `$FIND $LOG_BIN_DIR -name "mysql-bin.[0-9][0-9][0-9][0-9][0-9][0-9]" -printf "%f\n" 2> /dev/null | sort -n | cut -d "." -f 2` ; do
 			if [ $LOG_BIN -lt $LOG_BIN_LAST ] ; then
 				DATETIME=`date +%F.%T`
-				mkdir -p $DB_BACKUP_DIR/mysql-bin/ && cd $LOG_BIN_DIR && [ ! -f $DB_BACKUP_DIR/mysql-bin/*.*.$LOG_BIN.gz ] && cp -p mysql-bin.$LOG_BIN $DB_BACKUP_DIR/mysql-bin/$DATETIME.$LOG_BIN && gzip $DB_BACKUP_DIR/mysql-bin/$DATETIME.$LOG_BIN
+				cd $LOG_BIN_DIR && [ ! -f $DB_BACKUP_DIR/_binlog.*.*.$LOG_BIN.gz ] && cp -p mysql-bin.$LOG_BIN $DB_BACKUP_DIR/_binlog.$DATETIME.$LOG_BIN && gzip $DB_BACKUP_DIR/_binlog.$DATETIME.$LOG_BIN
 			fi
 		done
 	fi
 	# Backup dumps only
 	if ! [ "$TYPE" = "logs" ] ; then
 		# Add weekly/monthly prefix
-		[ $DAY_OF_WEEK -eq 0 ] && PREFIX="_weekly." || PREFIX=""
-		[ $DAY_OF_MONTH -eq 1 ] && PREFIX="_monthly."
+		[ ! -f $DB_BACKUP_DIR/_checkpoint.weekly ] && touch $DB_BACKUP_DIR/_checkpoint.weekly
+		$FIND $DB_BACKUP_DIR/_checkpoint.weekly -mtime +7 && touch $DB_BACKUP_DIR/_checkpoint.weekly && PREFIX="_weekly."
+		[ ! -f $DB_BACKUP_DIR/_checkpoint.monthly ] && touch $DB_BACKUP_DIR/_checkpoint.monthly
+		$FIND $DB_BACKUP_DIR/_checkpoint.monthly -mtime +30 && touch $DB_BACKUP_DIR/_checkpoint.monthly && PREFIX="_monthly."
 		# Search for (sub)databases which correspond with their hosting name and backup them
 		for HOSTING in `$FIND $WWW_DIR -maxdepth 1 -mindepth 1 -name "[^._]*" -type d -printf "%f " 2> /dev/null` ; do
 			if [ $AUTO_CREATE_BACKUP_DIRS -eq 1 ] || [ -d "$WWW_DIR/$HOSTING/$WWW_DB_SUBDIR/" ] ; then
+				DATABASE=`echo $HOSTING | sed "$DB_MAPPING"`
 				DATETIME=`date +%F.%T`
-				mkdir -p $WWW_DIR/$HOSTING/$WWW_DB_SUBDIR/ && $MYSQLDUMP $HOSTING | gzip > $WWW_DIR/$HOSTING/$WWW_DB_SUBDIR/$PREFIX$HOSTING.$DATETIME.sql.gz
-				DATABASE_LIST="$DATABASE_LIST $HOSTING"
-				for DATABASE in `echo -e "SHOW DATABASES LIKE '$HOSTING\_%'" | $MYSQL` ; do
+				mkdir -p $WWW_DIR/$HOSTING/$WWW_DB_SUBDIR/ && $MYSQLDUMP $DATABASE | gzip > $WWW_DIR/$HOSTING/$WWW_DB_SUBDIR/$PREFIX$DATABASE.$DATETIME.sql.gz
+				DATABASE_LIST="$DATABASE_LIST $DATABASE"
+				for DATABASE in `echo -e "SHOW DATABASES LIKE '$DATABASE\_%'" | $MYSQL` ; do
 					DATETIME=`date +%F.%T`
 					$MYSQLDUMP $DATABASE | gzip > $WWW_DIR/$HOSTING/$WWW_DB_SUBDIR/$PREFIX$DATABASE.$DATETIME.sql.gz
 					DATABASE_LIST="$DATABASE_LIST $DATABASE"
@@ -109,12 +113,11 @@ backup ( ) {
 			fi
 		done
 	fi
-	# Remove old binlogs
-	$FIND $DB_BACKUP_DIR/mysql-bin/ -maxdepth 1 -mtime +$DB_BACKUP_DAYS -name "[^.]*" -type f -delete 2> /dev/null
-	# Remove old backups in hosting subdirectories and the common backup directory
+	# Remove old backups (incl. binlogs) in hosting subdirectories and the common backup directory
 	$FIND $WWW_DIR/*/$WWW_DB_SUBDIR/ $DB_BACKUP_DIR -maxdepth 1 -mtime +$DB_BACKUP_DAYS -name "[^._]*" -type f -delete 2> /dev/null
-	$FIND $WWW_DIR/*/$WWW_DB_SUBDIR/ $DB_BACKUP_DIR -maxdepth 1 -mtime +$DB_BACKUP_DAYS_WEEKLY -name "_weekly.*" -type f -delete 2> /dev/null
+	$FIND $WWW_DIR/*/$WWW_DB_SUBDIR/ $DB_BACKUP_DIR -maxdepth 1 -mtime +$DB_BACKUP_DAYS -name "_binlog.*" -type f -delete 2> /dev/null
 	$FIND $WWW_DIR/*/$WWW_DB_SUBDIR/ $DB_BACKUP_DIR -maxdepth 1 -mtime +$DB_BACKUP_DAYS_MONTHLY -name "_monthly.*" -type f -delete 2> /dev/null
+	$FIND $WWW_DIR/*/$WWW_DB_SUBDIR/ $DB_BACKUP_DIR -maxdepth 1 -mtime +$DB_BACKUP_DAYS_WEEKLY -name "_weekly.*" -type f -delete 2> /dev/null
 }
 
 # Process restore
@@ -132,11 +135,11 @@ restore ( ) {
 	# Search for available dumps
 	DUMP=`$FIND \
 		$WWW_DIR/$HOSTING/$WWW_DB_SUBDIR/$DATABASE.*.*.sql.gz \
-		$WWW_DIR/$HOSTING/$WWW_DB_SUBDIR/_weekly.$DATABASE.*.*.sql.gz \
 		$WWW_DIR/$HOSTING/$WWW_DB_SUBDIR/_monthly.$DATABASE.*.*.sql.gz \
+		$WWW_DIR/$HOSTING/$WWW_DB_SUBDIR/_weekly.$DATABASE.*.*.sql.gz \
 		$DB_BACKUP_DIR/$DATABASE.*.*.sql.gz \
-		$DB_BACKUP_DIR/_weekly.$DATABASE.*.*.sql.gz \
 		$DB_BACKUP_DIR/_monthly.$DATABASE.*.*.sql.gz \
+		$DB_BACKUP_DIR/_weekly.$DATABASE.*.*.sql.gz \
 	! -newer $LOCK_FILE -printf "%T@ %p\n" 2> /dev/null | sort -n | tail -n 1 | cut -d " " -f 2-`
 	# Exit when no dump is available
 	if [ -z "$DUMP" ] ; then
@@ -147,12 +150,12 @@ restore ( ) {
 	START_DATETIME=`echo $DUMP | sed "s/.*\.\([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\)\.\([0-9][0-9]:[0-9][0-9]:[0-9][0-9]\)\.sql\.gz/\1 \2/"`
 	# Search for first required binlog
 	BINLOG_FIRST=`$FIND \
-		$DB_BACKUP_DIR/mysql-bin/*.*.*.gz \
+		$DB_BACKUP_DIR/_binlog.*.*.*.gz \
 		$LOG_BIN_DIR/mysql-bin.[0-9][0-9][0-9][0-9][0-9][0-9] \
 	-newer $DUMP -printf "%T@ %p\n" 2> /dev/null | sort -n | head -n 1 | cut -d " " -f 2-`
 	# Search for last required binlog
 	BINLOG_LAST=`$FIND \
-		$DB_BACKUP_DIR/mysql-bin/*.*.*.gz \
+		$DB_BACKUP_DIR/_binlog.*.*.*.gz \
 		$LOG_BIN_DIR/mysql-bin.[0-9][0-9][0-9][0-9][0-9][0-9] \
 	-newer $LOCK_FILE -printf "%T@ %p\n" 2> /dev/null | sort -n | head -n 1 | cut -d " " -f 2-`
 	# Generate args in order to search for intermediate binlogs
@@ -167,7 +170,7 @@ restore ( ) {
 	fi
 	# Search for intermediate binlogs
 	BINLOGS=`$FIND \
-		$DB_BACKUP_DIR/mysql-bin/*.*.*.gz \
+		$DB_BACKUP_DIR/_binlog.*.*.*.gz \
 		$LOG_BIN_DIR/mysql-bin.[0-9][0-9][0-9][0-9][0-9][0-9] \
 	$ARGUMENTS -printf "%T@ %p\n" 2> /dev/null | sort -n | cut -d " " -f 2-`
 	# Create list of all required binlogs

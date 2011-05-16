@@ -12,6 +12,10 @@ configuration file. Theese options override the global ones. If you use
 a local configuration file, specify a path to this file in the global
 section of ``mhadmin''.
 
+At least you should store your MySQL password in the local configuration
+file as ``mhadmin'' checks wheter it is well-secured or not. Required
+mode: 600, required uid: 0.
+
 Installation instructions
 ---------------------------------------------------------------------------
 1) Place ``mhadmin'' script into a directory containing binaries, e.g.
