@@ -10,13 +10,12 @@
 # FreeBSD compatibility
 if [ "`uname`" = "FreeBSD" ] ; then
 	FIND="gfind"
-	GREP="pcregrep"
 	STAT_ARGUMENTS="-f %p_%u"
 	STAT_CUT_CHARS=5
 fi
 
 # Required commands (dependencies)
-COMMANDS="cp cut date egrep ${FIND:=find} ${GREP:=grep} gzip head lsof mkdir mysql mysqlbinlog mysqlcheck mysqldump rev rm sed sort stat tail touch uniq zcat"
+COMMANDS="cp cut date ${FIND:=find} gzip head lsof mkdir mysql mysqlbinlog mysqlcheck mysqldump pcregrep rev rm sed sort stat tail touch uniq zcat"
 for COMMAND in $COMMANDS ; do
 	if ! which $COMMAND > /dev/null 2>&1 ; then
 		echo "Error: Command $COMMAND not found." 1>&2
@@ -76,7 +75,7 @@ backup ( ) {
 	# Backup binlogs only
 	if ! [ "$TYPE" = "dumps" ] ; then
 		echo "FLUSH LOGS" | $MYSQL
-		LOG_BIN_LAST=`lsof -w | $GREP "^mysqld\s+\S+\s+\S+\s+\S+w\s+.*\Wmysql-bin.\d{6}$" | rev | cut -d "." -f 1 | rev | sort -n | tail -n 1`
+		LOG_BIN_LAST=`lsof -w | pcregrep "^mysqld\s+\S+\s+\S+\s+\S+w\s+.*\Wmysql-bin.\d{6}$" | rev | cut -d "." -f 1 | rev | sort -n | tail -n 1`
 		for LOG_BIN in `$FIND $LOG_BIN_DIR -name "mysql-bin.[0-9][0-9][0-9][0-9][0-9][0-9]" -printf "%f\n" 2> /dev/null | sort -n | cut -d "." -f 2` ; do
 			if [ $LOG_BIN -lt $LOG_BIN_LAST ] ; then
 				DATETIME=`date +%F.%T`
@@ -103,8 +102,8 @@ backup ( ) {
 			fi
 		done
 		# Backup unassigned databases to the common backup directory
-		for DATABASE in `echo "SHOW DATABASES" | $MYSQL | $GREP -v "^information_schema$"` ; do
-			if ! echo "$DATABASE_LIST " | $GREP " $DATABASE " ; then
+		for DATABASE in `echo "SHOW DATABASES" | $MYSQL | pcregrep -v "^information_schema$"` ; do
+			if ! echo "$DATABASE_LIST " | pcregrep " $DATABASE " ; then
 				DATETIME=`date +%F.%T`
 				mkdir -p $DB_BACKUP_DIR && $MYSQLDUMP $DATABASE | gzip > $DB_BACKUP_DIR/$PREFIX$DATABASE.$DATETIME.sql.gz
 			fi
@@ -187,13 +186,13 @@ restore ( ) {
 		# Avoid restoring duplicate binlogs
 		[ -f $LOG_BIN_DIR/`echo $BINLOG_FILE | sed "s/.*\.\([0-9][0-9][0-9][0-9][0-9][0-9]\)\.gz$/mysql-bin.\1/"` ] && continue
 		# Find out a file type containing binlog
-		if file -b $BINLOG_FILE | $GREP "^gzip compressed data" > /dev/null ; then
+		if file -b $BINLOG_FILE | pcregrep "^gzip compressed data" > /dev/null ; then
 			zcat $BINLOG_FILE > $LOCK_FILE
 			BINLOG_FILE=$LOCK_FILE
 		fi
 		# Find out a file type containing binlog
-		if file -b $BINLOG_FILE | $GREP "^MySQL replication log" > /dev/null ; then
-			$MYSQLBINLOG -d $DATABASE --start-datetime="$START_DATETIME" --stop-datetime="$STOP_DATETIME" $BINLOG_FILE | $GREP -v "^use $DATABASE" | $MYSQL $DATABASE_BACKUP
+		if file -b $BINLOG_FILE | pcregrep "^MySQL replication log" > /dev/null ; then
+			$MYSQLBINLOG -d $DATABASE --start-datetime="$START_DATETIME" --stop-datetime="$STOP_DATETIME" $BINLOG_FILE | pcregrep -v "^use $DATABASE" | $MYSQL $DATABASE_BACKUP
 			echo "$BINLOG"
 		else
 			echo "Warning: Binlog $BINLOG is not valid." 1>&2
@@ -215,7 +214,7 @@ vacuum ( ) {
 		ARGUMENTS="--analyze --extended --optimize"
 	fi
 	# Loop through all databases
-	for DATABASE in `echo "SHOW DATABASES" | $MYSQL | $GREP -v "^information_schema$"` ; do
+	for DATABASE in `echo "SHOW DATABASES" | $MYSQL | pcregrep -v "^information_schema$"` ; do
 		# Loop through all tables
 		for TABLE in `echo "USE $DATABASE; SHOW TABLES" | $MYSQL` ; do
 			# Execute check command
@@ -229,8 +228,8 @@ vacuum ( ) {
 # Show name and version
 version ( ) {
 	# Grep this script
-	NAME=`$GREP "^# Name: " $0 | head -n 1 | sed "s/^# Name: //"`
-	VERSION=`$GREP "^# Version: " $0 | head -n 1 | sed "s/^# Version: //"`
+	NAME=`pcregrep "^# Name: " $0 | head -n 1 | sed "s/^# Name: //"`
+	VERSION=`pcregrep "^# Version: " $0 | head -n 1 | sed "s/^# Version: //"`
 	# Show name and version
 	echo "$NAME v$VERSION"
 }
