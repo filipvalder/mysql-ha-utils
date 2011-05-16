@@ -16,7 +16,7 @@ if [ "`uname`" = "FreeBSD" ] ; then
 fi
 
 # Required commands (dependencies)
-COMMANDS="cp cut date egrep ${FIND:-find} ${GREP:-grep} gzip head lsof mkdir mysql mysqlbinlog mysqlcheck mysqldump rev rm sed sort stat tail touch uniq zcat"
+COMMANDS="cp cut date egrep ${FIND:=find} ${GREP:=grep} gzip head lsof mkdir mysql mysqlbinlog mysqlcheck mysqldump rev rm sed sort stat tail touch uniq zcat"
 for COMMAND in $COMMANDS ; do
 	if ! which $COMMAND > /dev/null 2>&1 ; then
 		echo "Error: Command $COMMAND not found." 1>&2
@@ -45,7 +45,7 @@ WWW_DB_SUBDIR="mysqlbackup"		# Name of hostings' backup subdirectories
 WWW_DIR="/srv/www/"			# Hosting root directory
 
 # Local variables
-if [ -r $CONF_FILE ] && ! [ "`stat ${STAT_ARGUMENTS:--c %a_%u} $CONF_FILE | cut -c $STAT_CUT_CHARS-`" = "00_0" ] ; then
+if [ -r $CONF_FILE ] && ! [ "`stat ${STAT_ARGUMENTS:=-c %a_%u} $CONF_FILE | cut -c ${STAT_CUT_CHARS:=2}-`" = "00_0" ] ; then
 	echo "Error: Configuration file $CONF_FILE has NOT limited privileges." 1>&2
 	exit 1
 elif [ -r $CONF_FILE ] ; then
