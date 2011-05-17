@@ -128,15 +128,14 @@ restore ( ) {
 	TIME="$3"
 	# Args generation
 	DATABASE_BACKUP=`echo ${DATABASE}_$DATE$TIME | sed "s/[-:]//g"`
-	HOSTING=`echo $DATABASE | cut -d "_" -f 1`
 	STOP_DATETIME="$DATE $TIME"
 	# Modify timestamp on the lockfile
 	touch -t `echo $DATE$TIME | sed -e "s/\([0-9][0-9]\)$/.\1/" -e "s/[-:]//g"` $LOCK_FILE
 	# Search for available dumps
 	DUMP=`$FIND \
-		$WWW_DIR/$HOSTING/$WWW_DB_SUBDIR/$DATABASE.*.*.sql.gz \
-		$WWW_DIR/$HOSTING/$WWW_DB_SUBDIR/_monthly.$DATABASE.*.*.sql.gz \
-		$WWW_DIR/$HOSTING/$WWW_DB_SUBDIR/_weekly.$DATABASE.*.*.sql.gz \
+		$WWW_DIR/*/$WWW_DB_SUBDIR/$DATABASE.*.*.sql.gz \
+		$WWW_DIR/*/$WWW_DB_SUBDIR/_monthly.$DATABASE.*.*.sql.gz \
+		$WWW_DIR/*/$WWW_DB_SUBDIR/_weekly.$DATABASE.*.*.sql.gz \
 		$DB_BACKUP_DIR/$DATABASE.*.*.sql.gz \
 		$DB_BACKUP_DIR/_monthly.$DATABASE.*.*.sql.gz \
 		$DB_BACKUP_DIR/_weekly.$DATABASE.*.*.sql.gz \
@@ -269,7 +268,7 @@ case $1 in
 Available commands:
     backup [dumps|logs]             Perform full database backups
                                     [dumps only|binlogs only]
-    restore database Y-m-d H:M:S    Restore a database as of time/date
+    restore database Y-m-d H:M:S    Restore a database as of date/time
     vacuum [quick]                  Perform full service on all tables
                                     of all databases [checks/repairs only]
     version                         Show this script's name and version"
