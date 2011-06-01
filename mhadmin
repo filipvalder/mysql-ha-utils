@@ -1,9 +1,9 @@
 #!/bin/sh
 # Author: Filip Valder (filip.valder@vsb.cz)
-# Date: 9.5.2011
+# Date: 1.6.2011
 # Description: SHELL script for MySQL backup, restore and service actions
 # Name: MySQL High Availability Utilities
-# Version: STABLE
+# Version: 0.1
 
 
 # Pre-flight checks
@@ -24,31 +24,31 @@ for COMMAND in $COMMANDS ; do
 done
 
 
-# Default configuration
-# Global variables
-AUTO_CREATE_BACKUP_DIRS=0		# Automatically create subdirectories for MySQL backups across hosting directories. See $WWW_DB_SUBDIR.
-CONF_FILE="/usr/local/etc/mhadmin.conf"	# File containing local configuration variables
-DEFAULT_CHARACTER_SET="utf8"		# MySQL's default character set
-DB_BACKUP_DAYS=30			# Length (in days) for which daily backups are being kept.
-DB_BACKUP_DAYS_MONTHLY=180		# Length (in days) for which monthly backups are being kept.
-DB_BACKUP_DAYS_WEEKLY=90		# Length (in days) for which weekly backups are being kept.
-DB_BACKUP_DIR="/srv/mysqlbackup/"	# Common backup directory containing binlogs and unassigned databases.
-DB_MAPPING="s/\.//g"			# Substitution in hosting names for mapping them to database names
-LOG_BIN_DIR="/srv/mysql/"		# MySQL's binlog directory
-MAX_ALLOWED_PACKET="1GB"		# MySQL's max. allowed packet length
-MYSQL_HOST="localhost"			# MySQL host
-MYSQL_PASSWORD=""			# MySQL password
-MYSQL_USER="root"			# MySQL user
-TMP_DIR="/tmp/"				# Temporary directory. It MUST be on a filesystem with enough free space when restoring large databases.
-UMASK="006"				# Umask for newly created (temporary) files
-WWW_DB_SUBDIR="mysqlbackup"		# Per hosting backup subdirectory
-WWW_DIR="/srv/www/"			# Hosting root directory
+# Configuration
+# Default values
+AUTO_CREATE_BACKUP_DIRS=0
+CONF_FILE="/usr/local/etc/mhadmin.conf"
+DEFAULT_CHARACTER_SET="utf8"
+DB_BACKUP_DAYS=30
+DB_BACKUP_DAYS_MONTHLY=180
+DB_BACKUP_DAYS_WEEKLY=90
+DB_BACKUP_DIR="/home/mhbackup/"
+DB_MAPPING="s/\.//g"
+LOG_BIN_DIR="/var/lib/mysql/"
+MAX_ALLOWED_PACKET="1GB"
+MYSQL_HOST="localhost"
+MYSQL_PASSWORD="`pcregrep '^password=' /root/.my.cnf | cut -d '=' -f 2-`"
+MYSQL_USER="root"
+TMP_DIR="/tmp/"
+UMASK="006"
+WWW_DB_SUBDIR="mhbackup"
+WWW_DIR="/var/www/"
 
-# Local variables
-if [ -r $CONF_FILE ] && ! [ "`stat ${STAT_ARGUMENTS:=-c %a_%u} $CONF_FILE | cut -c ${STAT_CUT_CHARS:=2}-`" = "00_0" ] ; then
+# Local configuration
+if [ -r "$CONF_FILE" ] && ! [ "`stat ${STAT_ARGUMENTS:=-c %a_%u} $CONF_FILE | cut -c ${STAT_CUT_CHARS:=2}-`" = "00_0" ] ; then
 	echo "Error: Configuration file $CONF_FILE has NOT limited privileges." 1>&2
 	exit 1
-elif [ -r $CONF_FILE ] ; then
+elif [ -r "$CONF_FILE" ] ; then
 	. $CONF_FILE
 fi
 
@@ -88,9 +88,9 @@ backup ( ) {
 	if ! [ "$TYPE" = "logs" ] ; then
 		# Add weekly/monthly prefix
 		[ ! -f $DB_BACKUP_DIR/_checkpoint.weekly ] && touch $DB_BACKUP_DIR/_checkpoint.weekly
-		$FIND $DB_BACKUP_DIR/_checkpoint.weekly -mtime +7 && touch $DB_BACKUP_DIR/_checkpoint.weekly && PREFIX="_weekly."
+		[ -n "`$FIND $DB_BACKUP_DIR/_checkpoint.weekly -mtime +6`" ] && touch $DB_BACKUP_DIR/_checkpoint.weekly && PREFIX="_weekly."
 		[ ! -f $DB_BACKUP_DIR/_checkpoint.monthly ] && touch $DB_BACKUP_DIR/_checkpoint.monthly
-		$FIND $DB_BACKUP_DIR/_checkpoint.monthly -mtime +30 && touch $DB_BACKUP_DIR/_checkpoint.monthly && PREFIX="_monthly."
+		[ -n "`$FIND $DB_BACKUP_DIR/_checkpoint.monthly -mtime +29`" ] && touch $DB_BACKUP_DIR/_checkpoint.monthly && PREFIX="_monthly."
 		# Search for (sub)databases which correspond with their hosting name and backup them
 		for HOSTING in `$FIND $WWW_DIR -maxdepth 1 -mindepth 1 -name "[^._]*" -type d -printf "%f " 2> /dev/null` ; do
 			if [ $AUTO_CREATE_BACKUP_DIRS -eq 1 ] || [ -d "$WWW_DIR/$HOSTING/$WWW_DB_SUBDIR/" ] ; then
@@ -107,7 +107,7 @@ backup ( ) {
 		done
 		# Backup unassigned databases to the common backup directory
 		for DATABASE in `echo "SHOW DATABASES" | $MYSQL | pcregrep -v "^information_schema$"` ; do
-			if ! echo "$DATABASE_LIST " | pcregrep " $DATABASE " ; then
+			if ! echo "$DATABASE_LIST " | pcregrep -q " $DATABASE " ; then
 				DATETIME=`date +%F.%T`
 				mkdir -p $DB_BACKUP_DIR && $MYSQLDUMP $DATABASE | gzip > $DB_BACKUP_DIR/$PREFIX$DATABASE.$DATETIME.sql.gz
 			fi
@@ -120,15 +120,35 @@ backup ( ) {
 	$FIND $WWW_DIR/*/$WWW_DB_SUBDIR/ $DB_BACKUP_DIR -maxdepth 1 -mtime +$DB_BACKUP_DAYS_WEEKLY -name "_weekly.*" -type f -delete 2> /dev/null
 }
 
+# Show help
+help ( ) {
+	version
+	echo
+	echo "Available commands:"
+	echo "    backup [dumps|logs]             Perform full database backups"
+	echo "                                    [dumps only|binlogs only]"
+	echo "    help                            Show this help"
+	echo "    restore database Y-m-d H:M:S    Restore a database as of date/time"
+	echo "    vacuum [quick]                  Perform full service on all tables"
+	echo "                                    of all databases [checks/repairs only]"
+	echo "    version                         Show this script's name and version"
+}
+
 # Process restore
 restore ( ) {
 	# Arguments
 	DATABASE="$1"
 	DATE="$2"
 	TIME="$3"
-	# Args generation
+	# Generate args
 	DATABASE_BACKUP=`echo ${DATABASE}_$DATE$TIME | sed "s/[-:]//g"`
 	STOP_DATETIME="$DATE $TIME"
+	# Date/time format check
+	if ! echo "$DATE $TIME" | pcregrep -q "^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$" ; then
+		echo "Error: Date/time $DATE $TIME is not valid." 1>&2
+		rm $LOCK_FILE
+		exit 1
+	fi
 	# Modify timestamp on the lockfile
 	touch -t `echo $DATE$TIME | sed -e "s/\([0-9][0-9]\)$/.\1/" -e "s/[-:]//g"` $LOCK_FILE
 	# Search for available dumps
@@ -147,12 +167,12 @@ restore ( ) {
 		exit 1
 	fi
 	START_DATETIME=`echo $DUMP | sed "s/.*\.\([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\)\.\([0-9][0-9]:[0-9][0-9]:[0-9][0-9]\)\.sql\.gz/\1 \2/"`
-	# Search for first required binlog
+	# Search for first binlog
 	BINLOG_FIRST=`$FIND \
 		$DB_BACKUP_DIR/_binlog.*.*.*.gz \
 		$LOG_BIN_DIR/mysql-bin.[0-9][0-9][0-9][0-9][0-9][0-9] \
 	-newer $DUMP -printf "%T@ %p\n" 2> /dev/null | sort -n | head -n 1 | cut -d " " -f 2-`
-	# Search for last required binlog
+	# Search for last binlog
 	BINLOG_LAST=`$FIND \
 		$DB_BACKUP_DIR/_binlog.*.*.*.gz \
 		$LOG_BIN_DIR/mysql-bin.[0-9][0-9][0-9][0-9][0-9][0-9] \
@@ -172,8 +192,8 @@ restore ( ) {
 		$DB_BACKUP_DIR/_binlog.*.*.*.gz \
 		$LOG_BIN_DIR/mysql-bin.[0-9][0-9][0-9][0-9][0-9][0-9] \
 	$ARGUMENTS -printf "%T@ %p\n" 2> /dev/null | sort -n | cut -d " " -f 2-`
-	# Create list of all required binlogs
-	BINLOG_LIST=`echo -e "$BINLOG_FIRST\n$BINLOGS\n$BINLOG_LAST" | sort | uniq`
+	# Create list of all binlogs
+	BINLOG_LIST=`echo -e "$BINLOG_FIRST\n$BINLOGS\n$BINLOG_LAST" | uniq`
 	if [ -z "$BINLOG_LIST" ] ; then
 		echo "Warning: No binlog found." 1>&2
 	fi
@@ -184,16 +204,23 @@ restore ( ) {
 	# Restore binlogs
 	echo -e ".\nRestoring binlogs:"
 	for BINLOG in $BINLOG_LIST ; do
+		BINLOG_ORIGINAL=$LOG_BIN_DIR/`echo $BINLOG | sed "s/.*\.\([0-9][0-9][0-9][0-9][0-9][0-9]\)\.gz$/mysql-bin.\1/"`
+		# First iteration
+		if [ "$FIRST_RUN" = "COMPLETE" ] ; then
+			# Avoid restoring duplicate binlogs
+			[ -f "$BINLOG_ORIGINAL" ] && continue
+		else
+			[ -f "$BINLOG_ORIGINAL" ] && BINLOG=$BINLOG_ORIGINAL
+			FIRST_RUN="COMPLETE"
+		fi
 		BINLOG_FILE=$BINLOG
-		# Avoid restoring duplicate binlogs
-		[ -f $LOG_BIN_DIR/`echo $BINLOG_FILE | sed "s/.*\.\([0-9][0-9][0-9][0-9][0-9][0-9]\)\.gz$/mysql-bin.\1/"` ] && continue
 		# Find out a file type containing binlog
-		if file -b $BINLOG_FILE | pcregrep "^gzip compressed data" > /dev/null ; then
+		if file -b $BINLOG_FILE | pcregrep -q "^gzip compressed data" ; then
 			zcat $BINLOG_FILE > $LOCK_FILE
 			BINLOG_FILE=$LOCK_FILE
 		fi
 		# Find out a file type containing binlog
-		if file -b $BINLOG_FILE | pcregrep "^MySQL replication log" > /dev/null ; then
+		if file -b $BINLOG_FILE | pcregrep -q "^MySQL replication log" ; then
 			$MYSQLBINLOG -d $DATABASE --start-datetime="$START_DATETIME" --stop-datetime="$STOP_DATETIME" $BINLOG_FILE | pcregrep -v "^use $DATABASE" | $MYSQL $DATABASE_BACKUP
 			echo "$BINLOG"
 		else
@@ -209,7 +236,7 @@ vacuum ( ) {
 	LENGTH="$1"
 	# Error counter
 	ERROR_COUNTER=0
-	# Args generation
+	# Generate args
 	if [ "$LENGTH" = "quick" ] ; then
 		ARGUMENTS="--quick"
 	else
@@ -237,11 +264,11 @@ version ( ) {
 }
 
 
-# Main program
+# Program
 # Set ``umask'' for newly created files
 umask $UMASK
 # Lockfile check
-if [ -f $LOCK_FILE ] ; then
+if [ -f "$LOCK_FILE" ] ; then
 	echo "Error: Lockfile $LOCK_FILE exists." 1>&2
 	exit 1
 else
@@ -251,6 +278,9 @@ fi
 case $1 in
 	backup)
 		backup $2
+	;;
+	help)
+		help
 	;;
 	restore)
 		restore $2 $3 $4
@@ -263,15 +293,7 @@ case $1 in
 	;;
 	*)
 		[ ! -z "$1" ] && echo "Unknown command: $1"
-		echo "`version`
-
-Available commands:
-    backup [dumps|logs]             Perform full database backups
-                                    [dumps only|binlogs only]
-    restore database Y-m-d H:M:S    Restore a database as of date/time
-    vacuum [quick]                  Perform full service on all tables
-                                    of all databases [checks/repairs only]
-    version                         Show this script's name and version"
+		help
 	;;
 esac
 # Remove lockfile
