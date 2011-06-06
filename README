@@ -1,12 +1,15 @@
 Content of mysql-ha-utils
 -------------------------
-mhadmin.conf	A local configuration file
-mhadmin.cron	A sample (recommended) crontab
-mhadmin		SHELL script for MySQL backup, restore and service actions
-README		This file
+
+    mhadmin.conf        A local configuration file
+    mhadmin.cron        A sample (recommended) crontab
+    mhadmin             SHELL script for MySQL backup, restore and
+    service actions
+    README              This file
 
 Configuration instructions
 --------------------------
+
 Default values of all configuration parameters are hidden
 inside the ``mhadmin'' script. If you need to override theese
 options, place them into a local configuration file (typically
@@ -18,40 +21,49 @@ file is well-secured or not. Required mode: 600. Required UID: 0.
 
 Installation instructions
 -------------------------
-1) Place ``mhadmin'' script into a directory containing binaries,
-e.g. /root/bin/.
-2) Run ``mhadmin'' by typing mhadmin or ./mhadmin.
-3) If some dependencies are missing, the script stops and announces them.
+
+ 1) Place ``mhadmin'' script into a directory containing binaries,
+ e.g. /root/bin/.
+ 2) Run ``mhadmin'' by typing mhadmin or ./mhadmin.
+ 3) If some dependencies are missing, the script stops and announces them.
 
 Operating instructions
 ----------------------
+
 See output of ``mhadmin''.
 
 A file manifest
 ---------------
+
 See above.
 
 Copyright and licensing information
 -----------------------------------
+
 NO copyright, NO licensing, ever. Use it as you want but don't blame me
 for *ANYTHING*.
 
 Contact information
 -------------------
+
 E-mail: filip@valder.cz
 
 Known bugs
 ----------
+
 Please, report them!!!
 
 Troubleshooting
 ---------------
+
 FIRST help yourselves, THEN contact me, please.
 
 Credits and acknowledgments
 ---------------------------
+
 Open-minded people use and create open source software.
 
 A changelog
 -----------
+
 See https://github.com/filipvalder/mysql-ha-utils/commits/.
