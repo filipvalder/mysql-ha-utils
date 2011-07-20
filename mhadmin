@@ -1,9 +1,9 @@
 #!/bin/sh
 # Author: Filip Valder (filip.valder@vsb.cz)
-# Date: 1.6.2011
+# Date: 20.6.2011
 # Description: SHELL script for MySQL backup, restore and service actions
 # Name: MySQL High Availability Utilities
-# Version: 0.1
+# Version: 0.1.1
 
 
 # Pre-flight checks
@@ -37,7 +37,7 @@ DB_MAPPING="s/\.//g"
 LOG_BIN_DIR="/var/lib/mysql/"
 MAX_ALLOWED_PACKET="1GB"
 MYSQL_HOST="localhost"
-MYSQL_PASSWORD="`pcregrep '^password=' /root/.my.cnf | cut -d '=' -f 2-`"
+MYSQL_PASSWORD="`pcregrep -s '^password=' ~/.my.cnf | cut -d '=' -f 2-`"
 MYSQL_USER="root"
 TMP_DIR="/tmp/"
 UMASK="006"
@@ -58,7 +58,7 @@ DAY_OF_WEEK=`date +%u`
 LOCK_FILE="$TMP_DIR/mhadmin.tmp"
 MYSQL="mysql --default-character-set=$DEFAULT_CHARACTER_SET -f -h $MYSQL_HOST --max_allowed_packet=$MAX_ALLOWED_PACKET -p$MYSQL_PASSWORD -s -u $MYSQL_USER"
 MYSQLBINLOG="mysqlbinlog -D -f --set-charset=$DEFAULT_CHARACTER_SET"
-MYSQLCHECK="mysqlcheck --auto-repair --default-character-set=$DEFAULT_CHARACTER_SET -f -h $MYSQL_HOST -p$MYSQL_PASSWORD -s -u $MYSQL_USER"
+MYSQLCHECK="mysqlcheck --auto-repair --default-character-set=$DEFAULT_CHARACTER_SET -f -h $MYSQL_HOST -p$MYSQL_PASSWORD -u $MYSQL_USER"
 MYSQLDUMP="mysqldump --add-locks --create-options --default-character-set=$DEFAULT_CHARACTER_SET -K -e -f --hex-blob -h $MYSQL_HOST --max_allowed_packet=$MAX_ALLOWED_PACKET -p$MYSQL_PASSWORD -q --set-charset --single-transaction -u $MYSQL_USER"
 
 
@@ -78,7 +78,7 @@ backup ( ) {
 		echo "FLUSH LOGS" | $MYSQL
 		LOG_BIN_LAST=`lsof -w | pcregrep "^mysqld\s+\S+\s+\S+\s+\S+w\s+.*\Wmysql-bin.\d{6}$" | rev | cut -d "." -f 1 | rev | sort -n | tail -n 1`
 		for LOG_BIN in `$FIND $LOG_BIN_DIR -name "mysql-bin.[0-9][0-9][0-9][0-9][0-9][0-9]" -printf "%f\n" 2> /dev/null | sort -n | cut -d "." -f 2` ; do
-			if [ $LOG_BIN -lt $LOG_BIN_LAST ] ; then
+			if [ $LOG_BIN -lt ${LOG_BIN_LAST:="999999"} ] ; then
 				DATETIME=`date +%F.%T`
 				cd $LOG_BIN_DIR && [ ! -f $DB_BACKUP_DIR/_binlog.*.*.$LOG_BIN.gz ] && cp -p mysql-bin.$LOG_BIN $DB_BACKUP_DIR/_binlog.$DATETIME.$LOG_BIN && gzip $DB_BACKUP_DIR/_binlog.$DATETIME.$LOG_BIN
 			fi
@@ -234,8 +234,6 @@ restore ( ) {
 vacuum ( ) {
 	# Service type/length
 	LENGTH="$1"
-	# Error counter
-	ERROR_COUNTER=0
 	# Generate args
 	if [ "$LENGTH" = "quick" ] ; then
 		ARGUMENTS="--quick"
@@ -247,11 +245,15 @@ vacuum ( ) {
 		# Loop through all tables
 		for TABLE in `echo "USE $DATABASE; SHOW TABLES" | $MYSQL` ; do
 			# Execute check command
-			$MYSQLCHECK $ARGUMENTS $DATABASE $TABLE || let ERROR_COUNTER=ERROR_COUNTER+1
+			$MYSQLCHECK $ARGUMENTS $DATABASE $TABLE > /dev/null || let CRASHED_TABLES="$CRASHED_TABLES $DATABASE.$TABLE"
 		done
 	done
-	# Error status
-	[ $ERROR_COUNTER -eq 0 ] || exit 1
+	# Report crashed tables
+	if [ -n "$CRASHED_TABLES" ] ; then
+		echo "Error: Mysqlcheck could not repair the following table(s):$CRASHED_TABLES" 1>&2
+		rm $LOCK_FILE
+		exit 1
+	fi
 }
 
 # Show name and version
