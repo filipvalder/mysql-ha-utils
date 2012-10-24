@@ -1,9 +1,9 @@
 #!/bin/sh
 # Author: Filip Valder (filip.valder@vsb.cz)
-# Date: 20.6.2011
+# Date: 24.10.2012
 # Description: SHELL script for MySQL backup, restore and service actions
 # Name: MySQL High Availability Utilities
-# Version: 0.1.1
+# Version: 0.1.2
 
 
 # Pre-flight checks
@@ -56,10 +56,10 @@ fi
 DAY_OF_MONTH=`date +%d`
 DAY_OF_WEEK=`date +%u`
 LOCK_FILE="$TMP_DIR/mhadmin.tmp"
-MYSQL="mysql --default-character-set=$DEFAULT_CHARACTER_SET -f -h $MYSQL_HOST --max_allowed_packet=$MAX_ALLOWED_PACKET -p$MYSQL_PASSWORD -s -u $MYSQL_USER"
+MYSQL="mysql --default-character-set=$DEFAULT_CHARACTER_SET -f -h $MYSQL_HOST --max_allowed_packet=$MAX_ALLOWED_PACKET ${MYSQL_PASSWORD:+-p$MYSQL_PASSWORD} -s -u $MYSQL_USER"
 MYSQLBINLOG="mysqlbinlog -D -f --set-charset=$DEFAULT_CHARACTER_SET"
-MYSQLCHECK="mysqlcheck --auto-repair --default-character-set=$DEFAULT_CHARACTER_SET -f -h $MYSQL_HOST -p$MYSQL_PASSWORD -u $MYSQL_USER"
-MYSQLDUMP="mysqldump --add-locks --create-options --default-character-set=$DEFAULT_CHARACTER_SET -K -e -f --hex-blob -h $MYSQL_HOST --max_allowed_packet=$MAX_ALLOWED_PACKET -p$MYSQL_PASSWORD -q --set-charset --single-transaction -u $MYSQL_USER"
+MYSQLCHECK="mysqlcheck --auto-repair --default-character-set=$DEFAULT_CHARACTER_SET -f -h $MYSQL_HOST ${MYSQL_PASSWORD:+-p$MYSQL_PASSWORD} -u $MYSQL_USER"
+MYSQLDUMP="mysqldump --add-locks --create-options --default-character-set=$DEFAULT_CHARACTER_SET -K -e -f --hex-blob -h $MYSQL_HOST --max_allowed_packet=$MAX_ALLOWED_PACKET ${MYSQL_PASSWORD:+-p$MYSQL_PASSWORD} -q --set-charset --single-transaction -u $MYSQL_USER"
 
 
 # Functions
@@ -238,14 +238,14 @@ vacuum ( ) {
 	if [ "$LENGTH" = "quick" ] ; then
 		ARGUMENTS="--quick"
 	else
-		ARGUMENTS="--analyze --extended --optimize"
+		ARGUMENTS="--extended --optimize"
 	fi
 	# Loop through all databases
 	for DATABASE in `echo "SHOW DATABASES" | $MYSQL | pcregrep -v "^information_schema$"` ; do
 		# Loop through all tables
 		for TABLE in `echo "USE $DATABASE; SHOW TABLES" | $MYSQL` ; do
 			# Execute check command
-			$MYSQLCHECK $ARGUMENTS $DATABASE $TABLE > /dev/null || let CRASHED_TABLES="$CRASHED_TABLES $DATABASE.$TABLE"
+			$MYSQLCHECK $ARGUMENTS $DATABASE $TABLE > /dev/null || CRASHED_TABLES="$CRASHED_TABLES $DATABASE.$TABLE"
 		done
 	done
 	# Report crashed tables
