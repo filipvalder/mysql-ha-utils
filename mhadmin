@@ -36,8 +36,8 @@ DB_BACKUP_DIR="/home/mhbackup/"
 DB_MAPPING="s/\.//g"
 LOG_BIN_DIR="/var/lib/mysql/"
 MAX_ALLOWED_PACKET="1GB"
-MYSQL_HOST="localhost"
-MYSQL_PASSWORD="`pcregrep -s '^password=' ~/.my.cnf | cut -d '=' -f 2-`"
+MYSQL_HOST="127.0.0.1"
+MYSQL_PASSWORD_FILE="~/.my_extra.cnf"
 MYSQL_USER="root"
 TMP_DIR="/tmp/"
 UMASK="006"
@@ -56,10 +56,11 @@ fi
 DAY_OF_MONTH=`date +%d`
 DAY_OF_WEEK=`date +%u`
 LOCK_FILE="$TMP_DIR/mhadmin.tmp"
-MYSQL="mysql --default-character-set=$DEFAULT_CHARACTER_SET -f -h $MYSQL_HOST --max_allowed_packet=$MAX_ALLOWED_PACKET ${MYSQL_PASSWORD:+-p$MYSQL_PASSWORD} -s -u $MYSQL_USER"
+MYSQL="mysql --defaults-extra-file=$MYSQL_PASSWORD_FILE  --default-character-set=$DEFAULT_CHARACTER_SET -f -h $MYSQL_HOST --max_allowed_packet=$MAX_ALLOWED_PACKET"
 MYSQLBINLOG="mysqlbinlog -D -f --set-charset=$DEFAULT_CHARACTER_SET"
-MYSQLCHECK="mysqlcheck --auto-repair --default-character-set=$DEFAULT_CHARACTER_SET -f -h $MYSQL_HOST ${MYSQL_PASSWORD:+-p$MYSQL_PASSWORD} -u $MYSQL_USER"
-MYSQLDUMP="mysqldump --add-locks --create-options --default-character-set=$DEFAULT_CHARACTER_SET -K -e -f --hex-blob -h $MYSQL_HOST --max_allowed_packet=$MAX_ALLOWED_PACKET ${MYSQL_PASSWORD:+-p$MYSQL_PASSWORD} -q --set-charset --single-transaction -u $MYSQL_USER"
+MYSQLCHECK="mysqlcheck --defaults-extra-file=$MYSQL_PASSWORD_FILE --auto-repair --default-character-set=$DEFAULT_CHARACTER_SET -f -h $MYSQL_HOST"
+MYSQLDUMP="mysqldump --defaults-extra-file=$MYSQL_PASSWORD_FILE --add-locks --create-options --default-character-set=$DEFAULT_CHARACTER_SET -K -e -f --hex-blob -h $MYSQL_HOST --max_allowed_packet=$MAX_ALLOWED_PACKET  -q --set-charset --single-transaction"
+
 
 
 # Functions
