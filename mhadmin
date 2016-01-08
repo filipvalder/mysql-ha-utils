@@ -10,8 +10,6 @@
 # FreeBSD compatibility
 if [ "`uname`" = "FreeBSD" ] ; then
 	FIND="gfind"
-	STAT_ARGUMENTS="-f %p_%u"
-	STAT_CUT_CHARS=5
 fi
 
 # Required commands (dependencies)
@@ -36,30 +34,40 @@ DB_BACKUP_DIR="/home/mhbackup/"
 DB_MAPPING="s/\.//g"
 LOG_BIN_DIR="/var/lib/mysql/"
 MAX_ALLOWED_PACKET="1GB"
-MYSQL_HOST="localhost"
-MYSQL_PASSWORD="`pcregrep -s '^password=' ~/.my.cnf | cut -d '=' -f 2-`"
-MYSQL_USER="root"
+MYSQL_HOST="127.0.0.1"
+MYSQL_CREDENTIALS_FILE="$HOME/.my_credentials.cnf"
 TMP_DIR="/tmp/"
 UMASK="006"
 WWW_DB_SUBDIR="mhbackup"
 WWW_DIR="/var/www/"
 
 # Local configuration
-if [ -r "$CONF_FILE" ] && ! [ "`stat ${STAT_ARGUMENTS:=-c %a_%u} $CONF_FILE | cut -c ${STAT_CUT_CHARS:=2}-`" = "00_0" ] ; then
-	echo "Error: Configuration file $CONF_FILE has NOT limited privileges." 1>&2
+if ! [ -r "$CONF_FILE" ] ; then
+	echo "Error: Configuration file $CONF_FILE not found." 1>&2
 	exit 1
-elif [ -r "$CONF_FILE" ] ; then
+else
 	. $CONF_FILE
+fi
+
+# Credentials file
+if ! [ -r "$MYSQL_CREDENTIALS_FILE" ] ; then
+	echo "Error: Credentials file $MYSQL_CREDENTIALS_FILE not found." 1>&2
+	exit 1
+fi
+if [ -z "`$FIND $MYSQL_CREDENTIALS_FILE -perm 0600 -print 2>/dev/null`" ] ; then
+	echo "Error: Credentials file $MYSQL_CREDENTIALS_FILE needs 0600 permissions set." 1>&2
+	exit 1
 fi
 
 # Generated variables
 DAY_OF_MONTH=`date +%d`
 DAY_OF_WEEK=`date +%u`
 LOCK_FILE="$TMP_DIR/mhadmin.tmp"
-MYSQL="mysql --default-character-set=$DEFAULT_CHARACTER_SET -f -h $MYSQL_HOST --max_allowed_packet=$MAX_ALLOWED_PACKET ${MYSQL_PASSWORD:+-p$MYSQL_PASSWORD} -s -u $MYSQL_USER"
+MYSQL="mysql --defaults-extra-file=$MYSQL_CREDENTIALS_FILE --default-character-set=$DEFAULT_CHARACTER_SET -f -h $MYSQL_HOST --max_allowed_packet=$MAX_ALLOWED_PACKET -s"
 MYSQLBINLOG="mysqlbinlog -D -f --set-charset=$DEFAULT_CHARACTER_SET"
-MYSQLCHECK="mysqlcheck --auto-repair --default-character-set=$DEFAULT_CHARACTER_SET -f -h $MYSQL_HOST ${MYSQL_PASSWORD:+-p$MYSQL_PASSWORD} -u $MYSQL_USER"
-MYSQLDUMP="mysqldump --add-locks --create-options --default-character-set=$DEFAULT_CHARACTER_SET -K -e -f --hex-blob -h $MYSQL_HOST --max_allowed_packet=$MAX_ALLOWED_PACKET ${MYSQL_PASSWORD:+-p$MYSQL_PASSWORD} -q --set-charset --single-transaction -u $MYSQL_USER"
+MYSQLCHECK="mysqlcheck --defaults-extra-file=$MYSQL_CREDENTIALS_FILE --auto-repair --default-character-set=$DEFAULT_CHARACTER_SET -f -h $MYSQL_HOST"
+MYSQLDUMP="mysqldump --defaults-extra-file=$MYSQL_CREDENTIALS_FILE --add-locks --create-options --default-character-set=$DEFAULT_CHARACTER_SET -K -e -f --hex-blob -h $MYSQL_HOST --max_allowed_packet=$MAX_ALLOWED_PACKET -q --set-charset --single-transaction"
+
 
 
 # Functions
