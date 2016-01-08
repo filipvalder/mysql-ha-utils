@@ -1,4 +1,0 @@
-# path ~/.my_extra.cnf
-[client]
-user=root
-password=pass
