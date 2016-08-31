@@ -1,0 +1,6 @@
+#!/bin/bash
+
+[ $# -ne 1 ] && echo "usage: `basename $0` database" 1>&2 && exit 1
+
+mysqldump --no-data --routines $1 > $1-`date +%Y%m%d`-mysql_schema.sql
+echo "Dump stored to file: $1-`date +%Y%m%d`-mysql_schema.sql"
